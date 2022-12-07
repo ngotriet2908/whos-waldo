@@ -8,9 +8,9 @@ import matplotlib.patches as patches
 import seaborn
 from imgaug.augmentables.bbs import BoundingBox, BoundingBoxesOnImage
 
-whos_waldo_dir = '/whos_waldo'
+whos_waldo_dir = './whos_waldo'
 
-with open('/dataset_meta/blurry_bbs.json', 'r', encoding='utf-8') as file:
+with open('./dataset_meta/blurry_bbs.json', 'r', encoding='utf-8') as file:
     blurry_bbs = json.load(file)
 
 BLACK = [0, 0, 0]

@@ -24,8 +24,8 @@ msgpack_numpy.patch()
 
 img_db_dir = './storage/img_db'
 split_dir = './dataset_meta/splits'
-npz_dir = '/whos-waldo-features'
-
+# npz_dir = '/whos-waldo-features'
+npz_dir = '/home/capu/Documents/features_npz'
 
 def read_json(json_path):
     f = json.load(io.open(json_path, 'r', encoding='utf-8'))

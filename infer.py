@@ -1,6 +1,8 @@
 import argparse
 import json, os
 
+from tqdm import tqdm
+
 import torch
 from torch.utils.data import DataLoader
 from apex import amp
@@ -17,7 +19,8 @@ from utils.const import IMG_DIM
 import warnings
 warnings.filterwarnings("ignore")
 
-with open('/dataset_meta/blurry_bbs.json', 'r', encoding='utf-8') as file:
+
+with open('./dataset_meta/blurry_bbs.json', 'r', encoding='utf-8') as file:
     blurry_bbs = json.load(file)
 
 
@@ -35,7 +38,7 @@ def evaluate_gt(model, eval_loader, null_id, result_txt, html_correct, html_inco
     cnt = 0
     vis_cnt = 0
 
-    for i, batch in enumerate(eval_loader):
+    for i, batch in enumerate(tqdm(eval_loader)):
         id = batch['id'][0]
         gt = batch['gt'][0]
         assert len(gt) > 0
@@ -80,7 +83,7 @@ def evaluate_gt(model, eval_loader, null_id, result_txt, html_correct, html_inco
 
 
 def main(opts):
-    model_dir = f'/storage/finetune/{opts.model_dir}'
+    model_dir = f'./storage/finetune/{opts.model_dir}'
     hvd.init()
     n_gpu = hvd.size()
     device = torch.device("cuda", hvd.local_rank())
@@ -96,11 +99,11 @@ def main(opts):
     opts.null_id = train_opts.null_id
 
     # load DBs and image dirs
-    eval_img_db = DetectFeatLmdb(f'/storage/img_db/{opts.img_db}/{opts.split}',
+    eval_img_db = DetectFeatLmdb(f'./storage/img_db/{opts.img_db}/{opts.split}',
                                  opts.conf_th, opts.max_bb,
                                  opts.min_bb, opts.num_bb,
                                  opts.compressed_db)
-    eval_txt_db = TxtTokLmdb(f'/storage/txt_db/{opts.txt_db}/{opts.split}', train_opts.max_txt_len)
+    eval_txt_db = TxtTokLmdb(f'./storage/txt_db/{opts.txt_db}/{opts.split}', train_opts.max_txt_len)
     categories = ['interactive']
     if not opts.interactive_only:
         categories.append('other')
@@ -110,7 +113,7 @@ def main(opts):
 
     # Prepare model
     if opts.use_pretrained:
-        ckpt_file = '/storage/pretrain/uniter-base-pretrained.pt'
+        ckpt_file = './storage/pretrain/uniter-base-pretrained.pt'
     else:
         ckpt_file = f'{model_dir}/ckpt/model_step_{opts.ckpt}.pt'
     checkpoint = torch.load(ckpt_file)

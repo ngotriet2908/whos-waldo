@@ -1,0 +1,5 @@
+storage/
+whos_waldo/
+.idea/
+data/__pycache__/
+*.pyc

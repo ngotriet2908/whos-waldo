@@ -160,7 +160,7 @@ class TxtLmdb(object):
 
     def __getitem__(self, key):
         return msgpack.loads(decompress(self.txn.get(key.encode('utf-8'))),
-                             raw=False)
+                             raw=False,strict_map_key=False)
 
     def __setitem__(self, key, value):
         # NOTE: not thread safe
