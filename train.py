@@ -69,7 +69,7 @@ def create_dataloaders(datasets, is_train, opts, all_img_dbs=None):
             txt_db = TxtTokLmdb(dset['db'], opts.max_txt_len)
 
             if task.startswith('matching'):
-                dataset = build_whos_waldo_dataset(txt_db, img_db, ['one-to-one'], opts.itm_neg_prob)
+                dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], opts.itm_neg_prob)
             elif task.startswith('gt'):
                 dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], 0)
             else:
@@ -189,9 +189,16 @@ def main(opts):
         n_examples[name] += batch['input_ids'].size(0)
         n_in_units[name] += (batch['attn_masks'] == 1).sum().item()
         task = name.split('_')[0]
-        loss = model(batch, task=task, null_id=opts.null_id)
+        try:
+            loss = model(batch, task=task, null_id=opts.null_id)
+        except:
+            print("error with batch: ")
+            print(f"gt: {batch['gt']}")
+            print(f"num_bbs: {batch['num_bbs']}")
+            print(f"iden2token_pos: {batch['iden2token_pos']}")
+            continue
+        
         targets = batch['targets']
-
         if task.startswith('matching'):
             matching_loss, scores = loss
             n_loss_units[name] += matching_loss.size(0)

@@ -7,11 +7,11 @@ from torch.nn import functional as F
 from .ot import optimal_transport_dist
 from .uniter_model import (UniterPreTrainedModel, UniterModel)
 
-nullid_file = '/storage/nullid.npz'
+nullid_file = './storage/nullid.npz'
 with np.load(nullid_file) as null_load:
     NULLID = null_load['nullid']
 
-with open('/dataset_meta/blurry_bbs.json', 'r', encoding='utf-8') as file:
+with open('./dataset_meta/blurry_bbs.json', 'r', encoding='utf-8') as file:
     blurry_bbs = json.load(file)
 
 
@@ -45,7 +45,7 @@ class WhosWaldo(UniterPreTrainedModel):
         if task == 'matching':
             return self.forward_matching(input_ids, position_ids, img_feat, img_pos_feat,
                                          attention_mask, gather_index, targets,
-                                         ot_inputs, iden2token_pos)
+                                         ot_inputs, iden2token_pos, gt, num_bbs)
         elif task == 'gt':
             return self.forward_gt(input_ids, position_ids, img_feat, img_pos_feat,
                                    attention_mask, gather_index,
@@ -54,17 +54,41 @@ class WhosWaldo(UniterPreTrainedModel):
             raise NotImplementedError('Undefined task for WhosWaldo model')
 
     def forward_matching(self, input_ids, position_ids, img_feat, img_pos_feat,
-                         attention_mask, gather_index, targets, ot_inputs, iden2token_pos):
+                         attention_mask, gather_index, targets, ot_inputs, iden2token_pos, gt, num_bbs):
         """
         for 1-1 pairs
         """
-        _, _, sigmoid_sim = self.forward_ot(
+        T, sim, sigmoid_sim = self.forward_ot(
             input_ids, position_ids, img_feat, img_pos_feat, attention_mask,
             gather_index, ot_inputs, iden2token_pos, use_null_id=False
         )
-        sigmoid_sim = sigmoid_sim.reshape(sigmoid_sim.shape[0])
-        matching_loss = F.binary_cross_entropy(sigmoid_sim, targets.float(), reduction='none')
-        matching_scores = np.sum(np.where(sigmoid_sim.cpu().detach().numpy() < 0.5, 0, 1) == targets.cpu().detach().numpy())
+        # print(f"sim: {sim.shape}")
+        # print(f"gt: {gt}")
+        # print(f"num_bbs: {num_bbs}")
+        # print(f"iden2token_pos: {iden2token_pos}")
+        # print(f"img_feat: {img_feat.shape}")
+
+        # res = []
+        # for i in range(sim.size(0)):
+        #     print(f"t_cnt: {len(iden2token_pos[i])}, bb_cnt: {num_bbs[i]}")
+        #     ts = sim[i]
+        #     print(ts)
+        #     print("sliced: ", ts[:len(iden2token_pos[i]), :num_bbs[i]])
+        #     print("max row: ", torch.max(ts[:len(iden2token_pos[i]), :num_bbs[i]], dim=1)[0])
+        #     print("mean: ", torch.max(ts[:len(iden2token_pos[i]), :num_bbs[i]], dim=1)[0].mean())
+        #     res.append(torch.max(ts[:len(iden2token_pos[i]), :num_bbs[i]], dim=1)[0].mean())
+        # print((tt*mask).sum(dim=1)/mask.sum(dim=1))
+
+        # sigmoid_sim = sigmoid_sim.reshape(sigmoid_sim.shape[0])
+        # print(sigmoid_sim)
+        tt = torch.where(sim >= 1.0, 0.0, sigmoid_sim).max(dim=2)[0]
+        sigmoid_mean = tt.sum(dim=1)/(tt != 0).sum(dim=1)
+        # sigmoid_mean = torch.sigmoid(mean_tt)
+        # print(mean_tt)
+        # print(sigmoid_mean)
+        matching_loss = F.binary_cross_entropy(sigmoid_mean, targets.float(), reduction='none')
+        matching_scores = np.sum(np.where(sigmoid_mean.cpu().detach().numpy() < 0.5, 0, 1) == targets.cpu().detach().numpy())
+        
         return matching_loss, matching_scores
 
     def forward_ot(self, input_ids, position_ids, img_feat, img_pos_feat,
@@ -72,6 +96,7 @@ class WhosWaldo(UniterPreTrainedModel):
         """
         compute similarity matrices
         """
+
         sequence_output = self.uniter(input_ids, position_ids,
                                       img_feat, img_pos_feat,
                                       attention_mask, gather_index,
@@ -99,7 +124,6 @@ class WhosWaldo(UniterPreTrainedModel):
         batch_size, max_text_len, emb_size = txt_emb.shape
         filtered_matrices = []
         txt_lens = []
-
         for ex in range(batch_size):
             iden2token_pos_ex = iden2token_pos[ex]
             if use_null_id:
