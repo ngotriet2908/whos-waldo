@@ -8,7 +8,7 @@ This is the official repository for ["To Find Waldo You Need Contextual Cues: De
  
 2. To generate the needed bottom-up image features, you may either use the original [repo](https://github.com/peteanderson80/bottom-up-attention) or the pytorch [re-implementation](https://github.com/MILVLG/bottom-up-attention.pytorch) up to your discretion.
 
-3. In order to train/test with our splits, simply replace ```./dataset_meta/``` in the original source code repo with ours, and rerun the data preprocessing steps. We also provide a customizeable training config file ```config/train-whos-waldo-new-finetune.json``` for convenience.
+3. In order to train/test with our splits, simply replace ```./dataset_meta/``` in the original source code repo with ours, and rerun the data preprocessing steps. But you may find this [PyTorch re-implementation](https://github.com/MILVLG/bottom-up-attention.pytorch) easier to use instead. We also provide a customizeable training config file ```config/train-whos-waldo-new-finetune.json``` for convenience.
 
 ## License
 MIT
