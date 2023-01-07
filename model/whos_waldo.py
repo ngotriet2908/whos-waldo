@@ -6,6 +6,9 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.nn import functional as F
 from .ot import optimal_transport_dist
 from .uniter_model import (UniterPreTrainedModel, UniterModel)
+from toolz.sandbox import unzip
+from data import whos_waldo_ot_collate
+from data.loader import move_to_cuda
 
 nullid_file = './storage/nullid.npz'
 with np.load(nullid_file) as null_load:
@@ -27,6 +30,41 @@ class WhosWaldo(UniterPreTrainedModel):
         super().__init__(config, img_dim)
         self.uniter = UniterModel(config, img_dim)
 
+    def contrastive_help(self, inputs):
+        # print(">> inside forward")
+        (input_ids, img_feats, img_pos_feats, attn_masks, targets, id, img_neg_id, iden2token_pos, gt, num_bb
+         ) = map(list, unzip(inputs))
+        # print('input_ids: ', input_ids)
+        # print('img_feats: ', img_feats)
+        # print('img_pos_feats: ', img_pos_feats)
+        # print('attn_masks: ', attn_masks)
+        # print('id: ', id)
+        # print('img_neg_id: ', img_neg_id)
+        # print('iden2token_pos: ', iden2token_pos)
+        # print('gt: ', gt)
+        # print('num_bb: ', num_bb)
+        #
+        # print("zipping: ")
+
+        input_ids = [x.cpu() for x in input_ids]
+        img_feats = [x.cpu() for x in img_feats]
+        img_pos_feats = [x.cpu() for x in img_pos_feats]
+        attn_masks = [x.cpu() for x in attn_masks]
+        targets = [x.cpu() for x in targets]
+
+        b_size = len(input_ids)
+
+        ls = []
+        for i in range(b_size):
+            c_input_ids = [x.clone() for x in input_ids]
+            c_img_feats = [img_feats[i].clone() for _ in range(b_size)]
+            c_img_pos_feats = [img_pos_feats[i].clone() for _ in range(b_size)]
+            c_attn_masks = [torch.ones(len(x) + num_bb[i], dtype=torch.long) for x in input_ids]
+
+            res = whos_waldo_ot_collate(zip(c_input_ids, c_img_feats, c_img_pos_feats, c_attn_masks, targets, id, img_neg_id, iden2token_pos, gt, num_bb))
+            ls.append(move_to_cuda(res))
+
+        return ls
     def forward(self, batch, task, null_id=False):
         batch = defaultdict(lambda: None, batch)
         input_ids = batch['input_ids']
@@ -42,10 +80,11 @@ class WhosWaldo(UniterPreTrainedModel):
         gt = batch['gt']
         num_bbs = batch['num_bbs']
 
+        ls = self.contrastive_help(batch['ori_inputs'])
+        # return
+
         if task == 'matching':
-            return self.forward_matching(input_ids, position_ids, img_feat, img_pos_feat,
-                                         attention_mask, gather_index, targets,
-                                         ot_inputs, iden2token_pos, gt, num_bbs)
+            return self.forward_matching(ls)
         elif task == 'gt':
             return self.forward_gt(input_ids, position_ids, img_feat, img_pos_feat,
                                    attention_mask, gather_index,
@@ -53,41 +92,47 @@ class WhosWaldo(UniterPreTrainedModel):
         else:
             raise NotImplementedError('Undefined task for WhosWaldo model')
 
-    def forward_matching(self, input_ids, position_ids, img_feat, img_pos_feat,
-                         attention_mask, gather_index, targets, ot_inputs, iden2token_pos, gt, num_bbs):
+    def forward_matching(self, ls):
         """
         for 1-1 pairs
         """
-        T, sim, sigmoid_sim = self.forward_ot(
-            input_ids, position_ids, img_feat, img_pos_feat, attention_mask,
-            gather_index, ot_inputs, iden2token_pos, use_null_id=False
-        )
-        # print(f"sim: {sim.shape}")
-        # print(f"gt: {gt}")
-        # print(f"num_bbs: {num_bbs}")
-        # print(f"iden2token_pos: {iden2token_pos}")
-        # print(f"img_feat: {img_feat.shape}")
 
-        # res = []
-        # for i in range(sim.size(0)):
-        #     print(f"t_cnt: {len(iden2token_pos[i])}, bb_cnt: {num_bbs[i]}")
-        #     ts = sim[i]
-        #     print(ts)
-        #     print("sliced: ", ts[:len(iden2token_pos[i]), :num_bbs[i]])
-        #     print("max row: ", torch.max(ts[:len(iden2token_pos[i]), :num_bbs[i]], dim=1)[0])
-        #     print("mean: ", torch.max(ts[:len(iden2token_pos[i]), :num_bbs[i]], dim=1)[0].mean())
-        #     res.append(torch.max(ts[:len(iden2token_pos[i]), :num_bbs[i]], dim=1)[0].mean())
-        # print((tt*mask).sum(dim=1)/mask.sum(dim=1))
+        row_sm = []
+        for batch in ls:
+            input_ids = batch['input_ids']
+            position_ids = batch['position_ids']
+            img_feat = batch['img_feat']
+            img_pos_feat = batch['img_pos_feat']
+            attention_mask = batch['attn_masks']
+            gather_index = batch['gather_index']
+            targets = batch['targets']
+            ot_inputs = batch['ot_inputs']
+            ids = batch['id']
+            iden2token_pos = batch['iden2token_pos']
+            gt = batch['gt']
+            num_bbs = batch['num_bbs']
 
-        # sigmoid_sim = sigmoid_sim.reshape(sigmoid_sim.shape[0])
-        # print(sigmoid_sim)
-        tt = torch.where(sim >= 1.0, 0.0, sigmoid_sim).max(dim=2)[0]
-        sigmoid_mean = tt.sum(dim=1)/(tt != 0).sum(dim=1)
-        # sigmoid_mean = torch.sigmoid(mean_tt)
-        # print(mean_tt)
-        # print(sigmoid_mean)
-        matching_loss = F.binary_cross_entropy(sigmoid_mean, targets.float(), reduction='none')
-        matching_scores = np.sum(np.where(sigmoid_mean.cpu().detach().numpy() < 0.5, 0, 1) == targets.cpu().detach().numpy())
+            T, sim, _ = self.forward_ot(
+                input_ids, position_ids, img_feat, img_pos_feat, attention_mask,
+                gather_index, ot_inputs, iden2token_pos, use_null_id=False
+            )
+
+            tt = torch.where(sim >= 1.0, 0.0, sim).max(dim=2)[0]
+            sim_mean = tt.sum(dim=1)/(1e-9 + (tt != 0).sum(dim=1))
+            sm = F.softmax(sim_mean, dim=0)
+            row_sm.append(sm)
+
+
+        m_stack = torch.stack(row_sm)
+        eye = torch.eye(len(ls)).cuda()
+
+        target_pred = torch.argmax(m_stack, dim=1)  # [B]
+        prediction = torch.argmax(eye, dim=1)  # [all_querys]
+
+        matching_loss = F.cross_entropy(m_stack, target_pred, reduction='none')
+        matching_scores = torch.eq(target_pred, prediction).sum().cpu().numpy()
+        # matching_loss = F.binary_cross_entropy(sigmoid_mean, targets.float(), reduction='none')
+        # matching_scores = np.sum(np.where(sigmoid_mean.cpu().detach().numpy() < 0.5, 0, 1) == targets.cpu().detach().numpy())
         
         return matching_loss, matching_scores
 
@@ -158,9 +203,10 @@ class WhosWaldo(UniterPreTrainedModel):
                                          txt_pad, img_pad)
 
         sim = 1-C
-        sigmoid_sim = torch.sigmoid(sim)
+        # sigmoid_sim = torch.sigmoid(sim)
         T = torch.transpose(T, 1, 2)
-        return T, sim, sigmoid_sim
+        # return T, sim, sigmoid_sim
+        return T, sim, None
 
     def forward_gt(self, input_ids, position_ids, img_feat, img_pos_feat,
                    attention_mask, gather_index, ot_inputs,

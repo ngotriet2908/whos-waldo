@@ -5,6 +5,8 @@ import os, shutil
 from os.path import exists, join
 from time import time
 
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
 import torch
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
@@ -69,7 +71,9 @@ def create_dataloaders(datasets, is_train, opts, all_img_dbs=None):
             txt_db = TxtTokLmdb(dset['db'], opts.max_txt_len)
 
             if task.startswith('matching'):
-                dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], opts.itm_neg_prob)
+                # dataset = build_whos_waldo_dataset(txt_db, img_db, ['one-to-one', 'interactive', 'other'], 0)
+                # dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], 0)
+                dataset = build_whos_waldo_dataset(txt_db, img_db, ['one-to-one'], 0)
             elif task.startswith('gt'):
                 dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], 0)
             else:
@@ -189,6 +193,8 @@ def main(opts):
         n_examples[name] += batch['input_ids'].size(0)
         n_in_units[name] += (batch['attn_masks'] == 1).sum().item()
         task = name.split('_')[0]
+
+        # loss = model(batch, task=task, null_id=opts.null_id)
         try:
             loss = model(batch, task=task, null_id=opts.null_id)
         except:
@@ -197,7 +203,7 @@ def main(opts):
             print(f"num_bbs: {batch['num_bbs']}")
             print(f"iden2token_pos: {batch['iden2token_pos']}")
             continue
-        
+
         targets = batch['targets']
         if task.startswith('matching'):
             matching_loss, scores = loss
@@ -356,10 +362,19 @@ def validate_matching(model, val_loader):
     n_ex = 0
     st = time()
     for i, batch in enumerate(val_loader):
-        loss, matching_scores = model(batch, task='matching')
-        val_loss += loss.sum().item()
-        tot_score += matching_scores
-        n_ex += loss.shape[0]
+        try:
+            loss, matching_scores = model(batch, task='matching')
+            val_loss += loss.sum().item()
+            tot_score += matching_scores
+            n_ex += loss.shape[0]
+        except:
+            print("error with batch val match: ")
+            print(f"gt: {batch['gt']}")
+            print(f"num_bbs: {batch['num_bbs']}")
+            print(f"iden2token_pos: {batch['iden2token_pos']}")
+            print(f"loss: {loss}")
+            print(f"matching_scores: {matching_scores}")
+            continue
     val_loss = sum(all_gather_list(val_loss))
     tot_score = sum(all_gather_list(tot_score))
     n_ex = sum(all_gather_list(n_ex))
@@ -391,24 +406,33 @@ def validate_gt(model, val_loader, null_id):
     n_null_id_ex = 0
     st = time()
     for i, batch in enumerate(val_loader):
-        gt_losses, gt_scores, null_id_cnt, _, _, _ = model(batch, task='gt', null_id=null_id)
-        if gt_losses is None: continue
-        n_gt_ex = gt_losses['gt_row_loss'].shape[0]
+        try:
+            gt_losses, gt_scores, null_id_cnt, _, _, _ = model(batch, task='gt', null_id=null_id)
+            if gt_losses is None: continue
+            n_gt_ex = gt_losses['gt_row_loss'].shape[0]
 
-        row_loss = gt_losses['gt_row_loss'].sum()
-        col_loss = gt_losses['gt_col_loss'].sum()
-        val_loss += row_loss + col_loss
-        val_row_loss += row_loss
-        val_col_loss += col_loss
-        if gt_losses['gt_null_id_loss'] is not None:
-            val_loss += gt_losses['gt_null_id_loss']
-            val_null_loss += gt_losses['gt_null_id_loss']
-            val_null_score += gt_scores['gt_null_id_scores']
-        else:
-            assert null_id_cnt == 0
-        tot_score += gt_scores['gt_row_scores']
-        n_ex += n_gt_ex
-        n_null_id_ex += null_id_cnt
+            row_loss = gt_losses['gt_row_loss'].sum()
+            col_loss = gt_losses['gt_col_loss'].sum()
+            val_loss += row_loss + col_loss
+            val_row_loss += row_loss
+            val_col_loss += col_loss
+            if gt_losses['gt_null_id_loss'] is not None:
+                val_loss += gt_losses['gt_null_id_loss']
+                val_null_loss += gt_losses['gt_null_id_loss']
+                val_null_score += gt_scores['gt_null_id_scores']
+            else:
+                assert null_id_cnt == 0
+            tot_score += gt_scores['gt_row_scores']
+            n_ex += n_gt_ex
+            n_null_id_ex += null_id_cnt
+        except:
+            print("error with batch val gt: ")
+            print(f"gt: {batch['gt']}")
+            print(f"num_bbs: {batch['num_bbs']}")
+            print(f"iden2token_pos: {batch['iden2token_pos']}")
+            print(f"gt_losses: {gt_losses}")
+            print(f"gt_scores: {gt_scores}")
+            continue
 
     val_loss = sum(all_gather_list(val_loss))
     tot_score = sum(all_gather_list(tot_score))

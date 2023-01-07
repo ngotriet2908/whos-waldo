@@ -102,7 +102,12 @@ class WhosWaldoDataset(DetectFeatTxtTokDataset):
         target = torch.Tensor(1).long()
         target.data.fill_(ground_truth_label)
 
-        return input_ids, img_feat, img_pos_feat, attn_masks, target, example['id'], img_neg_id, example['iden2token_pos'], example['gt']
+        return input_ids, img_feat, img_pos_feat, attn_masks, target, example['id'], img_neg_id, example['iden2token_pos'], example['gt'], num_bb
+
+    def contrastive_helper(self, inputs):
+        # labels and negative images should be sampled every epoch
+        print("zipping: ")
+        print(zip(inputs))
 
 
 def _compute_ot_scatter(txt_lens, max_txt_len, joint_len):
@@ -123,7 +128,7 @@ def _compute_pad(lens, max_len):
 
 
 def whos_waldo_ot_collate(inputs):
-    (input_ids, img_feats, img_pos_feats, attn_masks, targets, id, img_neg_id, iden2token_pos, gt
+    (input_ids, img_feats, img_pos_feats, attn_masks, targets, id, img_neg_id, iden2token_pos, gt, num_bb
      ) = map(list, unzip(inputs))
 
     txt_lens = [i.size(0) for i in input_ids]
@@ -165,7 +170,9 @@ def whos_waldo_ot_collate(inputs):
              'img_neg_id': img_neg_id,
              'iden2token_pos': iden2token_pos,
              'gt': gt,
-             'num_bbs': num_bbs}
+             'num_bbs': num_bbs,
+             'ori_inputs': inputs
+             }
     return batch
 
 
