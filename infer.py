@@ -56,18 +56,32 @@ def evaluate_gt(model, eval_loader, null_id, result_txt, html_correct, html_inco
         cnt += 1
         per_example_result[id] = gt_scores['gt_row_scores'] / len(gt)
 
-        num_idens = len([x for y in batch['iden2token_pos'][0].values() for x in y])
-        sim = sim[0].detach().cpu().numpy()
+        # print('gt: ', gt)
+        # print('gt_scores: ', gt_scores['gt_row_scores'])
+        # print('per_example_result: ', per_example_result[id])
+        # print('sim: ', sim.shape)
+        # print('sim: ', sim.shape)
 
+        conf = [list(x.detach().cpu().numpy()) for x in gt_scores['conf']][0]
+        # print('conf: ', conf)
+        # num_idens = len([x for y in batch['iden2token_pos'][0].values() for x in y])
+        num_idens = len(batch['iden2token_pos'][0])
+        sim = torch.nn.functional.softmax(sim, dim=-1)
+        sim = sim[0].detach().cpu().numpy()
+        # print('gt_id_res_max', gt_scores['gt_id_res_max'])
         if vis_cnt < vis_num:
             if gt_scores['gt_row_scores'] < len(gt):  # not all correct
-                print_visualization(id, num_idens, boxes, sim, null_id, gt, html_out=html_incorrect, output_dir=output_dir)
+                print_visualization(id, num_idens, boxes, sim, null_id, gt, batch['iden2token_pos'][0], gt_scores['gt_row_scores']/len(gt), gt_scores['gt_id_res_max'].detach().cpu().numpy(), conf, html_out=html_incorrect, output_dir=output_dir)
             elif gt_scores['gt_row_scores'] == len(gt):  # all correct
-                print_visualization(id, num_idens, boxes, sim, null_id, gt, html_out=html_correct, output_dir=output_dir)
+                print_visualization(id, num_idens, boxes, sim, null_id, gt, batch['iden2token_pos'][0], gt_scores['gt_row_scores']/len(gt), gt_scores['gt_id_res_max'].detach().cpu().numpy(), conf, html_out=html_correct, output_dir=output_dir)
             else:
                 raise ValueError('Scores cannot be higher than number of gt pairs')
             vis_cnt += 1
 
+
+        # if (i == 10): 
+        #     break
+    
     html_correct.close()
     html_incorrect.close()
     with open(result_txt, 'w') as fp:

@@ -1,12 +1,28 @@
-IMG_DB = imgdb
-TEXT_DB = txtdb-test
-VIZ_NUM = 0
+IMG_DB = imgdb-new
+TEXT_DB = txtdb-new
+VIZ_NUM = 500
 
-GT_MODEL_DIR = finetune-new
-GT_CKPT = 50000
+# GT_MODEL_DIR = finetune-contrastive-one-to-one-feb
+# GT_CKPT = 50000
 
-M_MODEL_DIR = finetune-match
-M_CKPT = 50000
+GT_MODEL_DIR = finetune-contrastive-rest-slow-feb
+# # 42.6
+# GT_CKPT = 18500
+# 41.6
+GT_CKPT = 45500
+
+# # 37
+# GT_MODEL_DIR = finetune-contrastive-interactive-feb
+# GT_CKPT = 36000
+
+# GT_MODEL_DIR = finetune-contrastive-begin-rest-feb
+# # 35.5
+# GT_CKPT = 20000
+# # GT_CKPT = 50000
+
+
+# M_MODEL_DIR = finetune-match3
+# M_CKPT = 50000
 
 infer_gt: 
 	python infer.py  \

@@ -1,7 +1,7 @@
 {
     "model_config": "./config/uniter-base.json",
-    "output_dir": "./storage/finetune/finetune-contrastive-one-to-one-detach",
-    "checkpoint": "./storage/pretrained/uniter-base.pt",
+    "output_dir": "./storage/finetune/finetune-contrastive-rest-feb",
+    "checkpoint": "./storage/finetune/finetune-contrastive-one-to-one-feb/ckpt/model_step_35500.pt",
     "null_id": false,
     "itm_neg_prob": 0.5,
     "max_txt_len": 100,
@@ -9,10 +9,10 @@
     "max_bb": 100,
     "min_bb": 1,
     "num_bb": 36,
-    "train_batch_size": 1024,
+    "train_batch_size": 512,
     "val_batch_size": 1024,
     "gradient_accumulation_steps": 6,
-    "learning_rate": 5e-05, //5e-6
+    "learning_rate": 5e-05,
     "valid_steps": 500,
     "num_train_steps": 50000,
     "optim": "adamw",
@@ -22,8 +22,8 @@
     ],
     "dropout": 0.1,
     "weight_decay": 0.01,
-    "grad_norm": 5.0, //.1
-    "warmup_steps": 10000, //100 or 50 check if loss increase, use smaller lr
+    "grad_norm": 5.0,
+    "warmup_steps": 10000,
     "seed": 88,
     "fp16": true,
     "n_workers": 4,

@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import seaborn
 from imgaug.augmentables.bbs import BoundingBox, BoundingBoxesOnImage
+import collections
 
 whos_waldo_dir = './whos_waldo'
 
@@ -46,9 +47,9 @@ colors = {
 }
 
 
-def draw_heatmap(data, x, y, ax, vmax, cbar=False):
+def draw_heatmap(data, x, y, ax, vmax, vmin=-1,cbar=False):
     map = seaborn.heatmap(data,
-                    xticklabels=x, square=True, yticklabels=y, annot=True, vmin=0.0, vmax=vmax,
+                    xticklabels=x, square=True, yticklabels=y, annot=True, vmin=vmin, vmax=vmax,
                     cbar=cbar, linewidths=0.5, fmt='.4f', ax=ax, annot_kws={"size": 10})
     map.set_xticklabels(map.get_xmajorticklabels(), fontsize=16)
     map.set_yticklabels(map.get_ymajorticklabels(), fontsize=16)
@@ -61,7 +62,7 @@ def print_img(image_path, html_file):
         print('<img src="data:image/png;base64,{0}" height="300">'.format(img), file=html_file)
 
 
-def print_matrix(id, matrix, matrix_name, box_cnt, names, vmax, output_dir=None, html_out=None):
+def print_matrix(id, matrix, matrix_name, box_cnt, names, vmax, vmin, output_dir=None, html_out=None):
     fig, ax = plt.subplots()
 
     draw_heatmap(matrix, range(box_cnt), names, ax=ax, vmax=vmax)
@@ -83,7 +84,7 @@ def print_matrix(id, matrix, matrix_name, box_cnt, names, vmax, output_dir=None,
     return buf
 
 
-def print_visualization(id, num_idens, boxes, sim, null_id, gt, html_out=None, output_dir=None):
+def print_visualization(id, num_idens, boxes, sim, null_id, gt, id2pos, score, pred, conf, html_out=None, output_dir=None):
 
     folder = os.path.join(whos_waldo_dir, id)
     image_name = [f for f in glob.glob(os.path.join(folder, '*.*'))
@@ -96,11 +97,14 @@ def print_visualization(id, num_idens, boxes, sim, null_id, gt, html_out=None, o
     h, w = height, width
     img_read = cv2.resize(img_read, dim)
 
+    # print('boxes: ',boxes.shape[0])
     box_cnt = 0
+    conf = [str(round(x, 2)) for x in conf]
+    # print('conf: ', conf)
     for row in range(boxes.shape[0]):
         b = boxes[row].cpu().numpy()
         if (b[6]==0): continue
-        box = BoundingBox(x1=b[0] * w, x2=b[2] * w, y1=b[1] * h, y2=b[3] * h)
+        box = BoundingBox(x1=b[0] * w, x2=b[2] * w, y1=b[1] * h, y2=b[3] * h, label=f'({row}, {conf[row]})')
         bbs = BoundingBoxesOnImage([box], shape=img_read.shape)
         try:
             rgb = colors[list(colors.keys())[box_cnt]]
@@ -116,22 +120,41 @@ def print_visualization(id, num_idens, boxes, sim, null_id, gt, html_out=None, o
     new_img_path = os.path.join(vis_dir, id + '_with_boxes.jpg')
     cv2.imwrite(new_img_path, img_read)
 
+    id2pos_rev = list(collections.OrderedDict(sorted({x: k for k, v in id2pos.items() for x in v}.items())).values())
+    # print('id2pos_rev: ', id2pos_rev)
+    # print('id2pos: ', id2pos)
+
     if html_out:
         print('<p>' + 'img_id: ' + id + '</p>', file=html_out)
         with open(os.path.join(folder, 'caption.txt'), 'r') as f:
             caption = [n.rstrip('\n') for n in f.readlines()][0]
+
+        for x in id2pos_rev:
+            caption = caption.replace('[NAME]', f'[{x}]', 1)
+
+        gt_keys = list(gt.keys())
+        pred = {str(gt_keys[i]): x for i, x in enumerate(pred)}
+
         print('<p>' + 'caption: ' + caption + '</p>', file=html_out)
         print('<p>' + 'gt: ' + str(gt) + '</p>', file=html_out)
+        print('<p>' + 'conf: ' + str(conf) + '</p>', file=html_out)
+        print('<p>' + 'pred: ' + str(pred) + '</p>', file=html_out)
+        print('<p>' + 'score: ' + str(score) + '</p>', file=html_out)
+        print('<p>' + 'id2pos: ' + str(id2pos) + '</p>', file=html_out)
         if null_id and id in blurry_bbs.keys():
             blurry_list = blurry_bbs[id]
             print('<p>' + 'blurry boxes: ' + str(blurry_list) + '</p>', file=html_out)
         print_img(new_img_path, html_out)  # print original image with boxes
 
-    names = ['[NAME]'] * num_idens
+
+    # print('num_idens: ', num_idens)
+    # names = ['[NAME]'] * num_idens
+    names = [f'[{i}]' for i in range(num_idens)]
     if null_id:
         names.append(r'$\varnothing$')
 
-    buf_sim = print_matrix(id, sim, 'Similarities', box_cnt, names, 1.0, output_dir, html_out)
+    # print(sim)
+    buf_sim = print_matrix(id, sim, 'Similarities', box_cnt, names, 1.0, 0.0, output_dir, html_out)
     if html_out:
         print('<hr>', file=html_out)
 

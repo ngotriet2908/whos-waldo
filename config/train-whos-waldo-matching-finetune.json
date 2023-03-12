@@ -31,8 +31,8 @@
     "train_datasets": [
         {
             "name": "people",
-            "db": "./storage/txt_db/txtdb-train/train",
-            "img": "./storage/img_db/imgdb/train",
+            "db": "./storage/txt_db/txtdb-new/train",
+            "img": "./storage/img_db/imgdb-new/train",
             "tasks": [
                 "matching"            
             ],
@@ -45,8 +45,8 @@
     "val_datasets": [
         {
             "name": "people",
-            "db": "./storage/txt_db/txtdb-val/val",
-            "img": "./storage/img_db/imgdb/val",
+            "db": "./storage/txt_db/txtdb-new/val",
+            "img": "./storage/img_db/imgdb-new/val",
             "tasks": [
                 "matching",
                 "gt"

@@ -122,9 +122,16 @@ class DetectFeatLmdb(object):
                             'norm_bb': img_dump['norm_bb']}
         else:
             img_dump = msgpack.loads(dump, raw=False)
+
+        img_labels = img_dump['soft_labels'].argmax(-1)
+
+        new_conf = img_dump['soft_labels'][:, [50, 90, 92, 139, 364, 540]].max(-1)
+
         img_feat = torch.tensor(img_dump['features'][:nbb, :]).float()
         img_bb = torch.tensor(img_dump['norm_bb'][:nbb, :]).float()
-        return img_feat, img_bb
+        img_conf = torch.tensor(new_conf[:nbb]).float()
+
+        return img_feat, img_bb, img_conf
 
 
 @contextmanager
@@ -242,10 +249,10 @@ class DetectFeatTxtTokDataset(Dataset):
         return example
 
     def _get_img_feat(self, id_):
-        img_feat, bb = self.img_db[id_]
+        img_feat, bb, conf = self.img_db[id_]
         img_bb = torch.cat([bb, bb[:, 4:5] * bb[:, 5:]], dim=-1)
         num_bb = img_feat.size(0)
-        return img_feat, img_bb, num_bb
+        return img_feat, img_bb, num_bb, conf
 
 
 def pad_tensors(tensors, lens=None, pad=0):

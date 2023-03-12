@@ -2,8 +2,10 @@ import argparse
 from collections import defaultdict
 import json
 import os, shutil
+import traceback
 from os.path import exists, join
 from time import time
+import copy
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
@@ -73,9 +75,11 @@ def create_dataloaders(datasets, is_train, opts, all_img_dbs=None):
             if task.startswith('matching'):
                 # dataset = build_whos_waldo_dataset(txt_db, img_db, ['one-to-one', 'interactive', 'other'], 0)
                 # dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], 0)
-                dataset = build_whos_waldo_dataset(txt_db, img_db, ['one-to-one'], 0)
+                # dataset = build_whos_waldo_dataset(txt_db, img_db, ['one-to-one'], 0)
+                dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive'], 0)
             elif task.startswith('gt'):
-                dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], 0)
+                # dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], 0)
+                dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive'], 0)
             else:
                 raise ValueError(f'Undefined task {task}')
 
@@ -188,7 +192,14 @@ def main(opts):
     gt_nullid_ex = 0
     gt_tot_scores = 0
     gt_nullid_tot_scores = 0
+
+    # save_batch = None
     for step, (name, batch) in enumerate(meta_loader):
+        # if save_batch is None:
+            # save_batch = copy.deepcopy(batch)
+        # else:
+            # batch = copy.deepcopy(save_batch)
+
         # forward pass
         n_examples[name] += batch['input_ids'].size(0)
         n_in_units[name] += (batch['attn_masks'] == 1).sum().item()
@@ -197,11 +208,13 @@ def main(opts):
         # loss = model(batch, task=task, null_id=opts.null_id)
         try:
             loss = model(batch, task=task, null_id=opts.null_id)
-        except:
+        except Exception:
             print("error with batch: ")
             print(f"gt: {batch['gt']}")
+            print(f"id: {batch['id']}")
             print(f"num_bbs: {batch['num_bbs']}")
             print(f"iden2token_pos: {batch['iden2token_pos']}")
+            traceback.print_exc()
             continue
 
         targets = batch['targets']
@@ -212,9 +225,12 @@ def main(opts):
 
             matching_ex += len(targets)
             matching_scores += scores
+            # print(f"global step: {global_step}, valid_step: {opts.valid_steps}")
+            # print(f"matching_ex: {matching_ex}, matching_scores: {matching_scores}")
             if global_step % opts.valid_steps == 0:
                 val_acc = matching_scores / matching_ex
                 task2loss[f'{name}_matching_acc'](val_acc)
+                # print("val_acc", val_acc)
                 matching_scores = 0
                 matching_ex = 0
 
@@ -367,13 +383,15 @@ def validate_matching(model, val_loader):
             val_loss += loss.sum().item()
             tot_score += matching_scores
             n_ex += loss.shape[0]
-        except:
+        except Exception:
             print("error with batch val match: ")
             print(f"gt: {batch['gt']}")
+            print(f"id: {batch['id']}")
             print(f"num_bbs: {batch['num_bbs']}")
             print(f"iden2token_pos: {batch['iden2token_pos']}")
             print(f"loss: {loss}")
             print(f"matching_scores: {matching_scores}")
+            traceback.print_exc()
             continue
     val_loss = sum(all_gather_list(val_loss))
     tot_score = sum(all_gather_list(tot_score))
@@ -425,13 +443,15 @@ def validate_gt(model, val_loader, null_id):
             tot_score += gt_scores['gt_row_scores']
             n_ex += n_gt_ex
             n_null_id_ex += null_id_cnt
-        except:
+        except Exception:
             print("error with batch val gt: ")
             print(f"gt: {batch['gt']}")
+            print(f"ids: {batch['id']}")
             print(f"num_bbs: {batch['num_bbs']}")
             print(f"iden2token_pos: {batch['iden2token_pos']}")
             print(f"gt_losses: {gt_losses}")
             print(f"gt_scores: {gt_scores}")
+            traceback.print_exc()
             continue
 
     val_loss = sum(all_gather_list(val_loss))

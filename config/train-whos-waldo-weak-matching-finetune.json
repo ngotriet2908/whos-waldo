@@ -1,8 +1,8 @@
 {
     "model_config": "./config/uniter-base.json",
-    "output_dir": "./storage/finetune/finetune-match2",
-    "checkpoint": "./storage/finetune/finetune-match/ckpt/model_step_50000.pt",
-    "null_id": true,
+    "output_dir": "./storage/finetune/finetune-match-only2",
+    "checkpoint": "./storage/pretrained/uniter-base.pt",
+    "null_id": false,
     "itm_neg_prob": 0.5,
     "max_txt_len": 100,
     "conf_th": 0.2,
@@ -31,13 +31,13 @@
     "train_datasets": [
         {
             "name": "people",
-            "db": "./storage/txt_db/txtdb-train/train",
-            "img": "./storage/img_db/imgdb/train",
+            "db": "./storage/txt_db/txtdb-new/train",
+            "img": "./storage/img_db/imgdb-new/train",
             "tasks": [
                 "matching"            
             ],
             "mix_ratio": [
-                3
+                1
             ]
         }
 
@@ -45,8 +45,8 @@
     "val_datasets": [
         {
             "name": "people",
-            "db": "./storage/txt_db/txtdb-val/val",
-            "img": "./storage/img_db/imgdb/val",
+            "db": "./storage/txt_db/txtdb-new/val",
+            "img": "./storage/img_db/imgdb-new/val",
             "tasks": [
                 "matching",
                 "gt"

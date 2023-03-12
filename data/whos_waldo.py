@@ -73,7 +73,6 @@ class WhosWaldoDataset(DetectFeatTxtTokDataset):
         self.labels = np.random.choice(
             [0, 1], size=len(self.ids),
             p=[self.neg_sample_p, 1 - self.neg_sample_p])
-
         self.lens = []
         self.train_imgs = []
         self.train_neg_imgs = []
@@ -92,7 +91,7 @@ class WhosWaldoDataset(DetectFeatTxtTokDataset):
         # labels and negative images should be sampled every epoch
         ground_truth_label = self.labels[i]
         img_neg_id = self.train_neg_imgs[i]
-        img_feat, img_pos_feat, num_bb = self._get_img_feat(img_neg_id)  # uses images from the neg example
+        img_feat, img_pos_feat, num_bb, conf = self._get_img_feat(img_neg_id)  # uses images from the neg example
 
         # text input
         input_ids = example['input_ids']  # use text from original example
@@ -102,7 +101,7 @@ class WhosWaldoDataset(DetectFeatTxtTokDataset):
         target = torch.Tensor(1).long()
         target.data.fill_(ground_truth_label)
 
-        return input_ids, img_feat, img_pos_feat, attn_masks, target, example['id'], img_neg_id, example['iden2token_pos'], example['gt'], num_bb
+        return input_ids, img_feat, img_pos_feat, attn_masks, target, example['id'], img_neg_id, example['iden2token_pos'], example['gt'], num_bb, conf
 
     def contrastive_helper(self, inputs):
         # labels and negative images should be sampled every epoch
@@ -128,7 +127,7 @@ def _compute_pad(lens, max_len):
 
 
 def whos_waldo_ot_collate(inputs):
-    (input_ids, img_feats, img_pos_feats, attn_masks, targets, id, img_neg_id, iden2token_pos, gt, num_bb
+    (input_ids, img_feats, img_pos_feats, attn_masks, targets, id, img_neg_id, iden2token_pos, gt, num_bb, conf
      ) = map(list, unzip(inputs))
 
     txt_lens = [i.size(0) for i in input_ids]
@@ -171,7 +170,8 @@ def whos_waldo_ot_collate(inputs):
              'iden2token_pos': iden2token_pos,
              'gt': gt,
              'num_bbs': num_bbs,
-             'ori_inputs': inputs
+             'ori_inputs': inputs,
+             'conf': conf
              }
     return batch
 
