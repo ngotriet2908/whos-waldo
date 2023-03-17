@@ -74,12 +74,12 @@ def create_dataloaders(datasets, is_train, opts, all_img_dbs=None):
 
             if task.startswith('matching'):
                 # dataset = build_whos_waldo_dataset(txt_db, img_db, ['one-to-one', 'interactive', 'other'], 0)
-                # dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], 0)
+                dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], 0)
                 # dataset = build_whos_waldo_dataset(txt_db, img_db, ['one-to-one'], 0)
-                dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive'], 0)
+                # dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive'], 0)
             elif task.startswith('gt'):
-                # dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], 0)
-                dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive'], 0)
+                dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive', 'other'], 0)
+                # dataset = build_whos_waldo_dataset(txt_db, img_db, ['interactive'], 0)
             else:
                 raise ValueError(f'Undefined task {task}')
 
@@ -166,6 +166,10 @@ def main(opts):
     task2loss = {task: RunningMeter(f'loss/task_{task}')
                  for task in train_dataloaders.keys()}
 
+    task2loss['train_r_matching_loss'] = RunningMeter('loss/train_r_matching_loss')
+    task2loss['train_c_matching_loss'] = RunningMeter('loss/train_c_matching_loss')
+    task2loss['train_agreement_loss'] = RunningMeter('loss/train_agreement_loss')
+
     for task in train_dataloaders.keys():
         if task.startswith('matching'):
             task2loss[f'{task}_matching_acc'] = RunningMeter(f'accuracy/task_{task}_matching')
@@ -219,9 +223,14 @@ def main(opts):
 
         targets = batch['targets']
         if task.startswith('matching'):
-            matching_loss, scores = loss
+            matching_loss, scores, (r_matching_loss, c_matching_loss, agreement_loss) = loss
             n_loss_units[name] += matching_loss.size(0)
             loss = matching_loss.mean()
+
+
+            task2loss['train_r_matching_loss'](r_matching_loss.mean().item())
+            task2loss['train_c_matching_loss'](c_matching_loss.mean().item())
+            task2loss['train_agreement_loss'](agreement_loss.mean().item())
 
             matching_ex += len(targets)
             matching_scores += scores
@@ -377,12 +386,21 @@ def validate_matching(model, val_loader):
     tot_score = 0
     n_ex = 0
     st = time()
+
+    val_loss_r = 0
+    val_loss_c = 0
+    val_loss_a = 0
     for i, batch in enumerate(val_loader):
         try:
-            loss, matching_scores = model(batch, task='matching')
+            loss, matching_scores, (r_matching_loss, c_matching_loss, agreement_loss) = model(batch, task='matching')
             val_loss += loss.sum().item()
             tot_score += matching_scores
             n_ex += loss.shape[0]
+
+            val_loss_r += r_matching_loss.mean().item()
+            val_loss_c += c_matching_loss.mean().item()
+            val_loss_a += agreement_loss.mean().item()
+
         except Exception:
             print("error with batch val match: ")
             print(f"gt: {batch['gt']}")
@@ -397,15 +415,30 @@ def validate_matching(model, val_loader):
     tot_score = sum(all_gather_list(tot_score))
     n_ex = sum(all_gather_list(n_ex))
     if n_ex < 1:
-        return {'valid/loss': 0.0,
+        return {
+                'valid/loss': 0.0,
                'valid/acc': 0.0,
-               'valid/ex_per_s': 0}
+               'valid/ex_per_s': 0,
+               'valid/r_matching_loss': 0,
+               'valid/c_matching_loss': 0,
+               'valid/agreement_loss': 0,
+               }
     tot_time = time() - st
     val_loss /= n_ex
     val_acc = tot_score / n_ex
-    val_log = {'valid/loss': val_loss,
+
+    val_loss_r /= n_ex
+    val_loss_c /= n_ex
+    val_loss_a /= n_ex
+
+    val_log = {
+                'valid/loss': val_loss,
                'valid/acc': val_acc,
-               'valid/ex_per_s': n_ex / tot_time}
+               'valid/ex_per_s': n_ex / tot_time,
+                'valid/r_matching_loss': val_loss_r,
+               'valid/c_matching_loss': val_loss_c,
+               'valid/agreement_loss': val_loss_a,
+               }
 
     LOGGER.info(f"validation finished in {int(tot_time)} seconds, "
                 f"score: {val_acc * 100:.2f}")

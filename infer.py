@@ -36,7 +36,8 @@ def evaluate_gt(model, eval_loader, null_id, result_txt, html_correct, html_inco
     random_guess = 0
     per_example_result = {}  # {img_id: fraction of links correct}
     cnt = 0
-    vis_cnt = 0
+    vis_cnt_correct = 0
+    vis_cnt_incorrect = 0
 
     for i, batch in enumerate(tqdm(eval_loader)):
         id = batch['id'][0]
@@ -66,20 +67,25 @@ def evaluate_gt(model, eval_loader, null_id, result_txt, html_correct, html_inco
         # print('conf: ', conf)
         # num_idens = len([x for y in batch['iden2token_pos'][0].values() for x in y])
         num_idens = len(batch['iden2token_pos'][0])
-        sim = torch.nn.functional.softmax(sim, dim=-1)
+        # sim = torch.nn.functional.softmax(sim, dim=-1)
         sim = sim[0].detach().cpu().numpy()
         # print('gt_id_res_max', gt_scores['gt_id_res_max'])
-        if vis_cnt < vis_num:
-            if gt_scores['gt_row_scores'] < len(gt):  # not all correct
-                print_visualization(id, num_idens, boxes, sim, null_id, gt, batch['iden2token_pos'][0], gt_scores['gt_row_scores']/len(gt), gt_scores['gt_id_res_max'].detach().cpu().numpy(), conf, html_out=html_incorrect, output_dir=output_dir)
-            elif gt_scores['gt_row_scores'] == len(gt):  # all correct
-                print_visualization(id, num_idens, boxes, sim, null_id, gt, batch['iden2token_pos'][0], gt_scores['gt_row_scores']/len(gt), gt_scores['gt_id_res_max'].detach().cpu().numpy(), conf, html_out=html_correct, output_dir=output_dir)
-            else:
-                raise ValueError('Scores cannot be higher than number of gt pairs')
-            vis_cnt += 1
+        # if vis_cnt < vis_num:
+        #     if gt_scores['gt_row_scores'] < len(gt):  # not all correct
+        #         print_visualization(id, num_idens, boxes, sim, null_id, gt, batch['iden2token_pos'][0], gt_scores['gt_row_scores']/len(gt), gt_scores['gt_id_res_max'].detach().cpu().numpy(), conf, html_out=html_incorrect, output_dir=output_dir)
+        #     elif gt_scores['gt_row_scores'] == len(gt):  # all correct
+        #         print_visualization(id, num_idens, boxes, sim, null_id, gt, batch['iden2token_pos'][0], gt_scores['gt_row_scores']/len(gt), gt_scores['gt_id_res_max'].detach().cpu().numpy(), conf, html_out=html_correct, output_dir=output_dir)
+        #     else:
+        #         raise ValueError('Scores cannot be higher than number of gt pairs')
+        #     vis_cnt += 1
+        if vis_cnt_correct < vis_num//2 and gt_scores['gt_row_scores'] < len(gt):  # not all correct
+            print_visualization(id, num_idens, boxes, sim, null_id, gt, batch['iden2token_pos'][0], gt_scores['gt_row_scores']/len(gt), gt_scores['gt_id_res_max'].detach().cpu().numpy(), conf, html_out=html_incorrect, output_dir=output_dir)
+            vis_cnt_correct += 1
+        elif vis_cnt_incorrect < vis_num//2 and gt_scores['gt_row_scores'] == len(gt):  # all correct
+            print_visualization(id, num_idens, boxes, sim, null_id, gt, batch['iden2token_pos'][0], gt_scores['gt_row_scores']/len(gt), gt_scores['gt_id_res_max'].detach().cpu().numpy(), conf, html_out=html_correct, output_dir=output_dir)
+            vis_cnt_incorrect += 1
 
-
-        # if (i == 10): 
+        # if (i == 0): 
         #     break
     
     html_correct.close()
@@ -93,6 +99,103 @@ def evaluate_gt(model, eval_loader, null_id, result_txt, html_correct, html_inco
         print(per_example_result, file=fp)
 
     model.train()
+    print(f'Correct scores% {100 * correct_scores / total_scores}%')
+
+def get_area(ls):
+    x1 = ls[0]
+    y1 = ls[1]
+    x2 = ls[2]
+    y2 = ls[3]
+    return abs(x2 - x1) * abs(y2 - y1)
+
+
+def evaluate_gt_hueristic(model, eval_loader, null_id, result_txt, html_correct, html_incorrect, output_dir, vis_num):
+    print("start running evaluation in evaluate_gt")
+
+    total_scores = 0
+    correct_scores = 0
+    random_guess = 0
+    per_example_result = {}  # {img_id: fraction of links correct}
+    cnt = 0
+    vis_cnt = 0
+
+    for i, batch in enumerate(tqdm(eval_loader)):
+        id = batch['id'][0]
+        gt = batch['gt'][0]
+        img_pos_feat = batch['img_pos_feat'][0]
+        assert len(gt) > 0
+        targets = batch['targets']
+        assert targets[0] != 0
+        boxes = batch['img_pos_feat'][0]
+        num_faces = boxes.shape[0]
+
+        # gt_losses, gt_scores, null_id_cnt, _, sim, _ = model(batch, task='gt', null_id=null_id)
+        # assert gt_losses is not None
+        # print("new ")
+
+        # method = "B->S"
+        method = "L->R"
+
+        if (method == "B->S"):
+            boxes_norm = [(i, list(box[:4])) for i, box in enumerate(boxes.detach().cpu().numpy())]
+            boxes_area = [(get_area(x), i) for (i, x) in boxes_norm]
+            boxes_sort = list(sorted(boxes_area, reverse=True))
+            boxes_dict = {i: idx for i, (x, idx) in enumerate(boxes_sort)}
+        if (method == "L->R"):
+            boxes_norm = [(i, list(box[:4])) for i, box in enumerate(boxes.detach().cpu().numpy())]
+            boxes_area = [(x[1], i) for (i, x) in boxes_norm]
+            boxes_sort = list(sorted(boxes_area, reverse=False))
+            boxes_dict = {i: idx for i, (x, idx) in enumerate(boxes_sort)}
+
+        matchgt = 0
+
+        for (i, k) in gt.items():
+            if int(i) in boxes_dict and boxes_dict[int(i)] == k:
+                matchgt += 1
+
+        total_scores += len(gt)
+        correct_scores += matchgt
+        random_guess += len(gt) / num_faces
+        cnt += 1
+        per_example_result[id] = matchgt / len(gt)
+
+        # print('gt: ', gt)
+        # print('gt_scores: ', gt_scores['gt_row_scores'])
+        # print('per_example_result: ', per_example_result[id])
+        # print('sim: ', sim.shape)
+        # print('sim: ', sim.shape)
+
+        # conf = [list(x.detach().cpu().numpy()) for x in gt_scores['conf']][0]
+        # print('conf: ', conf)
+        # num_idens = len([x for y in batch['iden2token_pos'][0].values() for x in y])
+        # num_idens = len(batch['iden2token_pos'][0])
+        # sim = torch.nn.functional.softmax(sim, dim=-1)
+        # sim = sim[0].detach().cpu().numpy()
+        # print('gt_id_res_max', gt_scores['gt_id_res_max'])
+        # if vis_cnt < vis_num:
+            # if gt_scores['gt_row_scores'] < len(gt):  # not all correct
+                # print_visualization(id, num_idens, boxes, sim, null_id, gt, batch['iden2token_pos'][0], gt_scores['gt_row_scores']/len(gt), gt_scores['gt_id_res_max'].detach().cpu().numpy(), conf, html_out=html_incorrect, output_dir=output_dir)
+            # elif gt_scores['gt_row_scores'] == len(gt):  # all correct
+                # print_visualization(id, num_idens, boxes, sim, null_id, gt, batch['iden2token_pos'][0], gt_scores['gt_row_scores']/len(gt), gt_scores['gt_id_res_max'].detach().cpu().numpy(), conf, html_out=html_correct, output_dir=output_dir)
+            # else:
+                # raise ValueError('Scores cannot be higher than number of gt pairs')
+            # vis_cnt += 1
+
+
+        # if (i == 10): 
+        #     break
+    
+    # html_correct.close()
+    # html_incorrect.close()
+    # with open(result_txt, 'w') as fp:
+        # print(f'images evaluated {cnt}', file=fp)
+        # print(f'Possible scores {total_scores}', file=fp)
+        # print(f'Scores achieved {correct_scores}', file=fp)
+        # print(f'Correct scores% {100 * correct_scores / total_scores}%', file=fp)
+        # print(f'Scores from random guess {100 * random_guess / total_scores}&', file=fp)
+        # print(per_example_result, file=fp)
+
+    # model.train()
     print(f'Correct scores% {100 * correct_scores / total_scores}%')
 
 
@@ -151,6 +254,7 @@ def main(opts):
     html_incorrect = f'{output_dir}/{opts.eval_output_name}-incorrect.html'
     result_txt = f'{output_dir}/{opts.eval_output_name}.txt'
     evaluate_gt(model, eval_gt_dataloader, opts.null_id, result_txt, html_correct, html_incorrect, output_dir, opts.vis_num)
+    # evaluate_gt_hueristic(model, eval_gt_dataloader, opts.null_id, result_txt, html_correct, html_incorrect, output_dir, opts.vis_num)
 
 
 if __name__ == "__main__":

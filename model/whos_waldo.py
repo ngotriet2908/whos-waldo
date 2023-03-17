@@ -186,7 +186,7 @@ class WhosWaldo(UniterPreTrainedModel):
 
         # print("")
 
-        return matching_loss, matching_scores
+        return matching_loss, matching_scores, (r_matching_loss, c_matching_loss, agreement_loss)
 
     def forward_ot(self, input_ids, position_ids, img_feat, img_pos_feat,
                    attention_mask, gather_index, ot_inputs, iden2token_pos, use_null_id=False):

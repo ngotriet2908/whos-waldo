@@ -48,9 +48,17 @@ colors = {
 
 
 def draw_heatmap(data, x, y, ax, vmax, vmin=-1,cbar=False):
-    map = seaborn.heatmap(data,
-                    xticklabels=x, square=True, yticklabels=y, annot=True, vmin=vmin, vmax=vmax,
-                    cbar=cbar, linewidths=0.5, fmt='.4f', ax=ax, annot_kws={"size": 10})
+    num_name = len(data)
+    num_bb = len(data[0])
+    if num_bb > 6:
+        map = seaborn.heatmap(data,
+                        xticklabels=x, square=True, yticklabels=y, annot=True, vmin=vmin, vmax=vmax,
+                        cbar=cbar, linewidths=0.5, fmt='.4f', ax=ax, annot_kws={"size": 10})
+    else:
+        map = seaborn.heatmap(data,
+                        xticklabels=x, square=True, yticklabels=y, annot=True, vmin=vmin, vmax=vmax,
+                        cbar=cbar, linewidths=0.5, fmt='.8f', ax=ax, annot_kws={"size": 10})
+
     map.set_xticklabels(map.get_xmajorticklabels(), fontsize=16)
     map.set_yticklabels(map.get_ymajorticklabels(), fontsize=16)
     plt.setp(ax.get_yticklabels(), rotation=0, ha="right", rotation_mode="anchor")
